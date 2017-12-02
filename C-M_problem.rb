@@ -32,8 +32,9 @@ end
 
 # base class for generating the tree data structure
 class Node
-  attr_accessor :children, :tot_stat, :is_visited
+  attr_accessor :children, :tot_stat, :is_visited, :index
   def initialize (m_stat, c_stat, boat_stat)
+    @index = -1
     # array of child nodes (Node class)
     @children = []
     # stats for representing the no. of current missionaries and canibals number in left bank
@@ -61,6 +62,7 @@ data = []
 
 # create the node object with parameter m_no, n_no, boat_position in left bank
 node = Node.new(initial_state[0][0],initial_state[0][1],initial_state[0][2])
+node.index = 0
 left_bank = LeftRiverBank.new
 right_bank = RightRiverBank.new
 boat = Boat.new
@@ -157,6 +159,7 @@ while true
 
           # create a Node object with state after crossing the river and make it a child of current parent node
           temp_node = Node.new(arr[0][0], arr[0][1], arr[0][2])
+          temp_node.index = current_p_node.index + 1
           current_p_node.children.push(temp_node)
           node_queue.push(temp_node)
         end
@@ -171,40 +174,119 @@ while true
   data.push(Marshal.load(Marshal.dump(current_state)))
 end
 
-# DFS algorithm
-stack = []
-current_node = root_node
-current_node.is_visited = true
-# dfs buffer is used for storing the nodes that is being expanded or has been expanded
-# so that the same state doesn't get expanded more than once
-dfs_buffer = []
-tab = 0
-while true
-  
-  if !dfs_buffer.include?(current_node) && tab >= 0
-    prefix = '     |      '
-    suffix = '     |------'
-    if tab == 0
-      print
-    else
-      print prefix * (tab - 1) + suffix
-    end
-    print current_node.tot_stat
-    puts
+
+this_node_queue = []
+this_node_queue.push(root_node)
+# array of nodes
+# array of class Node
+node_matrix = Array.new(1){Array.new(1)}
+node_matrix [0][0] = root_node
+
+# array of nodes but with the content value exactly mirror of array of nodes
+# i.e. changing the content of node_matrix will also change the content of answer_matrix
+# but changing the content of answer_matrix will not change the content of node_matrix
+# array of string
+answer_matrix = Array.new(1){Array.new(1)}
+answer_matrix [0][0] = root_node.tot_stat.to_s
+
+prev_col_value = -1
+
+# another BFS but this is for drawing the tree
+while this_node_queue.size > 0
+  current = this_node_queue.shift
+  next if current.children.size <= 0
+  children_count = current.children.size
+
+  # finding the row(i) and column(j) of the matrix where current state is located
+  pos = node_matrix.flatten.index(current)
+  nrows = node_matrix.first.size
+  size = nrows
+  i = pos / nrows
+  j = pos % nrows
+
+  # dummy_array for storing rectangualar shape of node_matrix
+  # and empty_array for shoring rectangualar shape of answer_matrix(string)
+  dummy_array = [nil] * size
+  empty_array = ["         "] * size
+
+  # insert empty row and columns for next children
+  # for even number of children
+  rows_no_2_add = (children_count/2).floor * 2
+
+  row_to_insert = (i == 0)? dummy_array : node_matrix[i - 1]
+  dump_row = (i == 0)? empty_array : answer_matrix[i - 1]
+
+  # inserting rows above the parent node
+  (0...rows_no_2_add).each do
+    node_matrix.insert(i, row_to_insert)
+    answer_matrix.insert(i, dump_row)
   end
-  if (current_node != nil)
-    if !current_node.children.find{|x| x.is_visited == false}.nil?
-      next_node = current_node.children.find{|x| x.is_visited == false}
-      stack.push(current_node)
-      dfs_buffer.push(current_node)
-      next_node.is_visited = true
-      current_node = next_node
-      tab += 1
-    else
-      current_node = stack.pop
-      tab -= 1
-    end
-  else
-    break
+
+  # finding row(i) and column(j) position of current state after changing the matrix
+  pos = node_matrix.flatten.index(current)
+  nrows = node_matrix.first.size
+  i = pos / nrows
+  j = pos % nrows
+
+  row_to_insert = (i == (node_matrix.size - 1))? dummy_array : node_matrix[i + 1]
+  dump_row = (i == (answer_matrix.size - 1))? dump_row : answer_matrix[i + 1]
+
+  # inserting empty rows below the parent node
+  (0...rows_no_2_add).each do
+    node_matrix.insert(i + 1, row_to_insert)
+    answer_matrix.insert(i + 1, dump_row)
   end
+
+
+  # push all the children to node_queue
+  current.children.each do |x|
+    this_node_queue.push(x)
+  end
+
+  # insertion of child nodes will be here
+  pos = node_matrix.flatten.index(current)
+  nrows = node_matrix.first.size
+  row = pos / nrows
+  col = pos % nrows
+
+  # inserting empty cols
+  size = node_matrix.transpose.first.size
+
+  # inserting two empty columns, one for symbol, and another for children state
+  node_matrix = node_matrix.transpose.insert(col + 1, [''] * size).transpose if col != prev_col_value  # putting all children with same index as same column
+  node_matrix = node_matrix.transpose.insert(col + 1, [''] * size).transpose if col != prev_col_value
+  answer_matrix = answer_matrix.transpose.insert(col + 1, ['         '] * size).transpose if col != prev_col_value
+  answer_matrix = answer_matrix.transpose.insert(col + 1, ['      '] * size).transpose if col != prev_col_value
+
+  # inserting child nodes to node_matrix and corresponding state values in answer_matrix
+  x = 0
+  for row_pos in ((row - rows_no_2_add)..(row + rows_no_2_add)).step(2)
+    next if row_pos == row && children_count.even?
+    node_matrix[row_pos][col + 2] = current.children[x]
+    answer_matrix[row_pos][col + 2] = current.children[x].tot_stat.to_s
+    x += 1
+  end
+
+  # lets draw the character in between the parent and child
+  for row_pos in ((row - rows_no_2_add)..(row + rows_no_2_add))
+    next if children_count == 0
+    if children_count == 1
+      answer_matrix[row_pos][col + 1] = ' ════ '
+    else
+      answer_matrix[row_pos][col + 1] = '  ║   '
+      answer_matrix[row_pos][col + 1] = '  ╠══ ' if current.children.map{|x| x.tot_stat.to_s}.include?(answer_matrix[row_pos][col + 2])
+      answer_matrix[row_pos][col + 1] = '  ╚══ ' if answer_matrix[row_pos][col + 2] == current.children.last.tot_stat.to_s
+      answer_matrix[row_pos][col + 1] = '  ╔══ ' if answer_matrix[row_pos][col + 2] == current.children.first.tot_stat.to_s
+      answer_matrix[row_pos][col + 1] = ' ═╬══ ' if row_pos == row && !children_count.even?
+      answer_matrix[row_pos][col + 1] = ' ═╣   ' if row_pos == row && children_count.even?
+    end
+  end
+  prev_col_value = col
+
+end
+
+# printing the tree by replacing true with t and false with f if exists
+answer_matrix.each do |row|
+  print row.inject(:+).gsub("false", 'f').gsub('true', 't')
+  puts
 end
